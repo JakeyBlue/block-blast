@@ -494,11 +494,21 @@ function getBoardCell(cx, cy) {
   return null;
 }
 
-// compute anchor cell: the top-left of the bounding box of shape cells
+// compute anchor: align the ghost's center cell to the hovered board cell
 function getPlacementOrigin(pivotR, pivotC, shape) {
-  const minR = Math.min(...shape.cells.map(([r])=>r));
-  const minC = Math.min(...shape.cells.map(([,c])=>c));
-  return { originR: pivotR - minR, originC: pivotC - minC };
+  const cells = shape.cells;
+  const minR = Math.min(...cells.map(([r])=>r));
+  const minC = Math.min(...cells.map(([,c])=>c));
+  const maxR = Math.max(...cells.map(([r])=>r));
+  const maxC = Math.max(...cells.map(([,c])=>c));
+  const rows = maxR - minR + 1;
+  const cols = maxC - minC + 1;
+  const totalW = cols * CELL_SIZE + (cols - 1) * CELL_GAP;
+  const totalH = rows * CELL_SIZE + (rows - 1) * CELL_GAP;
+  // which cell within the ghost bounding box is under the cursor (ghost is centered on cursor)
+  const cursorCol = Math.floor((totalW / 2) / (CELL_SIZE + CELL_GAP));
+  const cursorRow = Math.floor((totalH / 2) / (CELL_SIZE + CELL_GAP));
+  return { originR: pivotR - minR - cursorRow, originC: pivotC - minC - cursorCol };
 }
 
 function shapeAbsoluteCells(originR, originC, shape) {
