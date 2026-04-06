@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Block Blast</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Segoe UI', sans-serif;
+      color: #fff;
+      user-select: none;
+    }
+
+    h1 {
+      font-size: 2.4rem;
+      font-weight: 900;
+      letter-spacing: 4px;
+      background: linear-gradient(90deg, #f7971e, #ffd200);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 16px;
+      text-shadow: none;
+    }
+
+    /* Score area */
+    #scores {
+      display: flex;
+      gap: 32px;
+      margin-bottom: 20px;
+    }
+
+    .score-box {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 14px;
+      padding: 10px 28px;
+      text-align: center;
+      backdrop-filter: blur(6px);
+    }
+
+    .score-label {
+      font-size: 0.7rem;
+      letter-spacing: 2px;
+      color: #aaa;
+      text-transform: uppercase;
+    }
+
+    .score-value {
+      font-size: 1.8rem;
+      font-weight: 700;
+      color: #ffd200;
+    }
+
+    /* Main layout */
+    #game-area {
+      display: flex;
+      gap: 24px;
+      align-items: flex-start;
+    }
+
+    /* Board */
+    #board-wrapper {
+      background: rgba(255,255,255,0.05);
+      border: 2px solid rgba(255,255,255,0.12);
+      border-radius: 16px;
+      padding: 12px;
+      backdrop-filter: blur(8px);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    }
+
+    #board {
+      display: grid;
+      grid-template-columns: repeat(8, 48px);
+      grid-template-rows: repeat(8, 48px);
+      gap: 3px;
+    }
+
+    .cell {
+      width: 48px;
+      height: 48px;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.08);
+      transition: background 0.15s, transform 0.15s;
+    }
+
+    .cell.filled {
+      border: 1px solid rgba(255,255,255,0.25);
+      box-shadow: inset 0 2px 4px rgba(255,255,255,0.15), 0 2px 6px rgba(0,0,0,0.3);
+    }
+
+    .cell.highlight {
+      background: rgba(255,255,255,0.25) !important;
+      border-color: rgba(255,255,255,0.5) !important;
+      transform: scale(0.95);
+    }
+
+    .cell.invalid {
+      background: rgba(255,80,80,0.35) !important;
+      border-color: rgba(255,80,80,0.6) !important;
+    }
+
+    @keyframes clear-flash {
+      0%   { opacity: 1; transform: scale(1); }
+      50%  { opacity: 0.2; transform: scale(1.15); background: #fff; }
+      100% { opacity: 0; transform: scale(0); }
+    }
+
+    .cell.clearing {
+      animation: clear-flash 0.35s ease forwards;
+    }
+
+    @keyframes place-pop {
+      0%   { transform: scale(0.7); opacity: 0.6; }
+      60%  { transform: scale(1.12); }
+      100% { transform: scale(1); opacity: 1; }
+    }
+
+    .cell.placed {
+      animation: place-pop 0.25s ease forwards;
+    }
+
+    /* Piece tray */
+    #tray {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .piece-slot {
+      width: 130px;
+      height: 130px;
+      background: rgba(255,255,255,0.05);
+      border: 2px dashed rgba(255,255,255,0.15);
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: grab;
+      transition: border-color 0.2s, background 0.2s;
+      position: relative;
+    }
+
+    .piece-slot:active { cursor: grabbing; }
+    .piece-slot.used { opacity: 0.3; pointer-events: none; }
+    .piece-slot.dragging-source { opacity: 0.5; }
+
+    .piece-grid {
+      display: grid;
+      gap: 3px;
+    }
+
+    .piece-cell {
+      width: 22px;
+      height: 22px;
+      border-radius: 4px;
+    }
+
+    /* Ghost drag element */
+    #drag-ghost {
+      position: fixed;
+      pointer-events: none;
+      z-index: 9999;
+      display: none;
+      gap: 3px;
+    }
+
+    .ghost-cell {
+      width: 48px;
+      height: 48px;
+      border-radius: 8px;
+      opacity: 0.75;
+    }
+
+    /* Game over overlay */
+    #overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.75);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 24px;
+      backdrop-filter: blur(4px);
+    }
+
+    #overlay.show { display: flex; }
+
+    #overlay h2 {
+      font-size: 3rem;
+      font-weight: 900;
+      background: linear-gradient(90deg, #f7971e, #ffd200);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    #overlay p { font-size: 1.2rem; color: #ccc; }
+
+    #restart-btn {
+      padding: 14px 40px;
+      font-size: 1.1rem;
+      font-weight: 700;
+      letter-spacing: 2px;
+      background: linear-gradient(90deg, #f7971e, #ffd200);
+      color: #1a1a2e;
+      border: none;
+      border-radius: 50px;
+      cursor: pointer;
+      transition: transform 0.15s, box-shadow 0.15s;
+      box-shadow: 0 4px 20px rgba(247,151,30,0.5);
+    }
+
+    #restart-btn:hover {
+      transform: scale(1.06);
+      box-shadow: 0 6px 28px rgba(247,151,30,0.7);
+    }
+  </style>
+</head>
+<body>
+
+<h1>BLOCK BLAST</h1>
+
+<div id="scores">
+  <div class="score-box">
+    <div class="score-label">Score</div>
+    <div class="score-value" id="score-display">0</div>
+  </div>
+  <div class="score-box">
+    <div class="score-label">Best</div>
+    <div class="score-value" id="best-display">0</div>
+  </div>
+</div>
+
+<div id="game-area">
+  <div id="board-wrapper">
+    <div id="board"></div>
+  </div>
+  <div id="tray">
+    <div class="piece-slot" id="slot-0"></div>
+    <div class="piece-slot" id="slot-1"></div>
+    <div class="piece-slot" id="slot-2"></div>
+  </div>
+</div>
+
+<!-- Full-size ghost shown while dragging -->
+<div id="drag-ghost"></div>
+
+<!-- Game Over -->
+<div id="overlay">
+  <h2>GAME OVER</h2>
+  <p id="final-score-text">Your score: 0</p>
+  <button id="restart-btn">PLAY AGAIN</button>
+</div>
+
+<script>
+// ─── Constants ───────────────────────────────────────────────────────────────
+const ROWS = 8, COLS = 8;
+const CELL_SIZE = 48, CELL_GAP = 3;
+
+// Tetromino / polmino shapes [row, col] offsets
+const SHAPES = [
+  // Single
+  { cells: [[0,0]], color: '#e74c3c' },
+  // Domino H
+  { cells: [[0,0],[0,1]], color: '#e67e22' },
+  // Domino V
+  { cells: [[0,0],[1,0]], color: '#e67e22' },
+  // Tromino L
+  { cells: [[0,0],[0,1],[1,0]], color: '#f1c40f' },
+  { cells: [[0,0],[0,1],[1,1]], color: '#f1c40f' },
+  { cells: [[0,0],[1,0],[1,1]], color: '#f1c40f' },
+  { cells: [[0,1],[1,0],[1,1]], color: '#f1c40f' },
+  // Tromino I
+  { cells: [[0,0],[0,1],[0,2]], color: '#2ecc71' },
+  { cells: [[0,0],[1,0],[2,0]], color: '#2ecc71' },
+  // Tetromino I
+  { cells: [[0,0],[0,1],[0,2],[0,3]], color: '#1abc9c' },
+  { cells: [[0,0],[1,0],[2,0],[3,0]], color: '#1abc9c' },
+  // Tetromino L
+  { cells: [[0,0],[1,0],[2,0],[2,1]], color: '#3498db' },
+  { cells: [[0,0],[0,1],[0,2],[1,0]], color: '#3498db' },
+  { cells: [[0,0],[0,1],[1,1],[2,1]], color: '#3498db' },
+  { cells: [[0,2],[1,0],[1,1],[1,2]], color: '#3498db' },
+  // Tetromino J
+  { cells: [[0,0],[1,0],[2,0],[2,-1]], color: '#9b59b6' },
+  { cells: [[0,0],[1,0],[1,1],[1,2]], color: '#9b59b6' },
+  { cells: [[0,1],[1,1],[2,0],[2,1]], color: '#9b59b6' },
+  { cells: [[0,0],[0,1],[0,2],[1,2]], color: '#9b59b6' },
+  // Tetromino S
+  { cells: [[0,1],[0,2],[1,0],[1,1]], color: '#e91e63' },
+  { cells: [[0,0],[1,0],[1,1],[2,1]], color: '#e91e63' },
+  // Tetromino Z
+  { cells: [[0,0],[0,1],[1,1],[1,2]], color: '#ff5722' },
+  { cells: [[0,1],[1,0],[1,1],[2,0]], color: '#ff5722' },
+  // Tetromino T
+  { cells: [[0,0],[0,1],[0,2],[1,1]], color: '#00bcd4' },
+  { cells: [[0,0],[1,0],[1,1],[2,0]], color: '#00bcd4' },
+  { cells: [[0,1],[1,0],[1,1],[1,2]], color: '#00bcd4' },
+  { cells: [[0,0],[0,1],[1,0],[2,0]], color: '#00bcd4' },
+  // Tetromino O (2x2)
+  { cells: [[0,0],[0,1],[1,0],[1,1]], color: '#ffd200' },
+  // Pentomino I
+  { cells: [[0,0],[0,1],[0,2],[0,3],[0,4]], color: '#ff6b6b' },
+  { cells: [[0,0],[1,0],[2,0],[3,0],[4,0]], color: '#ff6b6b' },
+  // 3x3 square
+  { cells: [[0,0],[0,1],[0,2],[1,0],[1,1],[1,2],[2,0],[2,1],[2,2]], color: '#ff9800' },
+  // 2x3
+  { cells: [[0,0],[0,1],[1,0],[1,1],[2,0],[2,1]], color: '#8bc34a' },
+  { cells: [[0,0],[0,1],[0,2],[1,0],[1,1],[1,2]], color: '#8bc34a' },
+];
+
+// ─── State ───────────────────────────────────────────────────────────────────
+let board = [];      // 8x8 grid: null or color string
+let pieces = [];     // 3 current piece objects {shape, used}
+let score = 0;
+let best = parseInt(localStorage.getItem('bb_best') || '0', 10);
+
+// Drag state
+let dragging = null; // { slotIndex, shape, anchorRow, anchorCol }
+
+// ─── DOM helpers ─────────────────────────────────────────────────────────────
+const boardEl = document.getElementById('board');
+const slots = [0,1,2].map(i => document.getElementById(`slot-${i}`));
+const scoreEl = document.getElementById('score-display');
+const bestEl = document.getElementById('best-display');
+const overlay = document.getElementById('overlay');
+const finalScoreText = document.getElementById('final-score-text');
+const dragGhost = document.getElementById('drag-ghost');
+
+// ─── Init ────────────────────────────────────────────────────────────────────
+function init() {
+  board = Array.from({length: ROWS}, () => Array(COLS).fill(null));
+  score = 0;
+  renderScore();
+  buildBoard();
+  dealPieces();
+}
+
+function buildBoard() {
+  boardEl.innerHTML = '';
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      cell.dataset.r = r;
+      cell.dataset.c = c;
+      boardEl.appendChild(cell);
+    }
+  }
+  renderBoard();
+}
+
+function renderBoard() {
+  const cells = boardEl.querySelectorAll('.cell');
+  cells.forEach(cell => {
+    const r = +cell.dataset.r, c = +cell.dataset.c;
+    const color = board[r][c];
+    if (color) {
+      cell.classList.add('filled');
+      cell.style.background = color;
+    } else {
+      cell.classList.remove('filled');
+      cell.style.background = '';
+    }
+  });
+}
+
+function renderScore() {
+  scoreEl.textContent = score;
+  bestEl.textContent = best;
+}
+
+// ─── Piece dealing ───────────────────────────────────────────────────────────
+function randomShape() {
+  return SHAPES[Math.floor(Math.random() * SHAPES.length)];
+}
+
+function dealPieces() {
+  pieces = [randomShape(), randomShape(), randomShape()].map(s => ({shape: s, used: false}));
+  renderTray();
+}
+
+function renderTray() {
+  pieces.forEach((p, i) => {
+    const slot = slots[i];
+    slot.innerHTML = '';
+    if (p.used) {
+      slot.classList.add('used');
+      return;
+    }
+    slot.classList.remove('used');
+    slot.appendChild(buildMiniPiece(p.shape));
+  });
+}
+
+function buildMiniPiece(shape) {
+  const cells = shape.cells;
+  const minR = Math.min(...cells.map(([r])=>r));
+  const minC = Math.min(...cells.map(([,c])=>c));
+  const maxR = Math.max(...cells.map(([r])=>r));
+  const maxC = Math.max(...cells.map(([,c])=>c));
+  const rows = maxR - minR + 1;
+  const cols = maxC - minC + 1;
+
+  const grid = document.createElement('div');
+  grid.className = 'piece-grid';
+  grid.style.gridTemplateColumns = `repeat(${cols}, 22px)`;
+  grid.style.gridTemplateRows = `repeat(${rows}, 22px)`;
+
+  // fill grid with empty then place cells
+  const occupied = new Set(cells.map(([r,c]) => `${r-minR},${c-minC}`));
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const div = document.createElement('div');
+      div.className = 'piece-cell';
+      if (occupied.has(`${r},${c}`)) {
+        div.style.background = shape.color;
+        div.style.boxShadow = `inset 0 2px 4px rgba(255,255,255,0.3), 0 2px 4px rgba(0,0,0,0.3)`;
+      } else {
+        div.style.background = 'transparent';
+      }
+      grid.appendChild(div);
+    }
+  }
+  return grid;
+}
+
+// ─── Drag helpers ────────────────────────────────────────────────────────────
+function buildGhost(shape) {
+  const cells = shape.cells;
+  const minR = Math.min(...cells.map(([r])=>r));
+  const minC = Math.min(...cells.map(([,c])=>c));
+  const maxR = Math.max(...cells.map(([r])=>r));
+  const maxC = Math.max(...cells.map(([,c])=>c));
+  const rows = maxR - minR + 1;
+  const cols = maxC - minC + 1;
+
+  dragGhost.innerHTML = '';
+  dragGhost.style.display = 'grid';
+  dragGhost.style.gridTemplateColumns = `repeat(${cols}, ${CELL_SIZE}px)`;
+  dragGhost.style.gridTemplateRows = `repeat(${rows}, ${CELL_SIZE}px)`;
+  dragGhost.style.gap = `${CELL_GAP}px`;
+
+  const occupied = new Set(cells.map(([r,c]) => `${r-minR},${c-minC}`));
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const div = document.createElement('div');
+      div.className = 'ghost-cell';
+      if (occupied.has(`${r},${c}`)) {
+        div.style.background = shape.color;
+        div.style.boxShadow = `inset 0 2px 4px rgba(255,255,255,0.3)`;
+      } else {
+        div.style.background = 'transparent';
+      }
+      dragGhost.appendChild(div);
+    }
+  }
+}
+
+function positionGhost(cx, cy, shape) {
+  const cells = shape.cells;
+  const minR = Math.min(...cells.map(([r])=>r));
+  const minC = Math.min(...cells.map(([,c])=>c));
+  const maxR = Math.max(...cells.map(([r])=>r));
+  const maxC = Math.max(...cells.map(([,c])=>c));
+  const rows = maxR - minR + 1;
+  const cols = maxC - minC + 1;
+  const totalW = cols * CELL_SIZE + (cols - 1) * CELL_GAP;
+  const totalH = rows * CELL_SIZE + (rows - 1) * CELL_GAP;
+  dragGhost.style.left = (cx - totalW / 2) + 'px';
+  dragGhost.style.top  = (cy - totalH / 2) + 'px';
+}
+
+// ─── Board cell from pointer ──────────────────────────────────────────────────
+function getBoardCell(cx, cy) {
+  // hit-test each cell
+  const cells = boardEl.querySelectorAll('.cell');
+  for (const cell of cells) {
+    const rect = cell.getBoundingClientRect();
+    if (cx >= rect.left && cx <= rect.right && cy >= rect.top && cy <= rect.bottom) {
+      return { r: +cell.dataset.r, c: +cell.dataset.c };
+    }
+  }
+  return null;
+}
+
+// compute anchor cell: the top-left of the bounding box of shape cells
+function getPlacementOrigin(pivotR, pivotC, shape) {
+  const minR = Math.min(...shape.cells.map(([r])=>r));
+  const minC = Math.min(...shape.cells.map(([,c])=>c));
+  return { originR: pivotR - minR, originC: pivotC - minC };
+}
+
+function shapeAbsoluteCells(originR, originC, shape) {
+  return shape.cells.map(([dr, dc]) => [originR + dr, originC + dc]);
+}
+
+function canPlace(originR, originC, shape) {
+  for (const [r, c] of shapeAbsoluteCells(originR, originC, shape)) {
+    if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return false;
+    if (board[r][c]) return false;
+  }
+  return true;
+}
+
+// ─── Hover highlight ─────────────────────────────────────────────────────────
+let lastHighlighted = [];
+
+function clearHighlight() {
+  lastHighlighted.forEach(el => el.classList.remove('highlight', 'invalid'));
+  lastHighlighted = [];
+}
+
+function showHighlight(originR, originC, shape, valid) {
+  clearHighlight();
+  for (const [r, c] of shapeAbsoluteCells(originR, originC, shape)) {
+    if (r < 0 || r >= ROWS || c < 0 || c >= COLS) continue;
+    const el = boardEl.querySelector(`[data-r="${r}"][data-c="${c}"]`);
+    if (el) {
+      el.classList.add(valid ? 'highlight' : 'invalid');
+      lastHighlighted.push(el);
+    }
+  }
+}
+
+// ─── Placement & scoring ──────────────────────────────────────────────────────
+function placePiece(originR, originC, shape) {
+  const abs = shapeAbsoluteCells(originR, originC, shape);
+  abs.forEach(([r, c]) => { board[r][c] = shape.color; });
+
+  // animate placed cells
+  abs.forEach(([r, c]) => {
+    const el = boardEl.querySelector(`[data-r="${r}"][data-c="${c}"]`);
+    el.classList.add('filled', 'placed');
+    el.style.background = shape.color;
+    el.addEventListener('animationend', () => el.classList.remove('placed'), {once: true});
+  });
+
+  score += abs.length;
+  checkClears();
+  renderScore();
+}
+
+function checkClears() {
+  const rowsToClear = [];
+  const colsToClear = [];
+
+  for (let r = 0; r < ROWS; r++) {
+    if (board[r].every(v => v !== null)) rowsToClear.push(r);
+  }
+  for (let c = 0; c < COLS; c++) {
+    if (board.every(row => row[c] !== null)) colsToClear.push(c);
+  }
+
+  if (rowsToClear.length === 0 && colsToClear.length === 0) return;
+
+  const cellsToKill = new Set();
+  rowsToClear.forEach(r => {
+    for (let c = 0; c < COLS; c++) cellsToKill.add(`${r},${c}`);
+  });
+  colsToClear.forEach(c => {
+    for (let r = 0; r < ROWS; r++) cellsToKill.add(`${r},${c}`);
+  });
+
+  // bonus: 18 per cleared line
+  const linesCleared = rowsToClear.length + colsToClear.length;
+  score += linesCleared * 18;
+
+  // animate
+  cellsToKill.forEach(key => {
+    const [r, c] = key.split(',').map(Number);
+    const el = boardEl.querySelector(`[data-r="${r}"][data-c="${c}"]`);
+    if (el) {
+      el.classList.add('clearing');
+      el.addEventListener('animationend', () => {
+        el.classList.remove('clearing', 'filled');
+        el.style.background = '';
+      }, {once: true});
+    }
+    board[r][c] = null;
+  });
+
+  renderScore();
+}
+
+// ─── Game over check ──────────────────────────────────────────────────────────
+function checkGameOver() {
+  const available = pieces.filter(p => !p.used);
+  if (available.length === 0) return; // will deal next round
+
+  for (const p of available) {
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        if (canPlace(r, c, p.shape)) return; // at least one valid placement
+      }
+    }
+  }
+
+  // No moves: game over
+  if (score > best) {
+    best = score;
+    localStorage.setItem('bb_best', best);
+  }
+  finalScoreText.textContent = `Your score: ${score}`;
+  overlay.classList.add('show');
+}
+
+// ─── Drag & Drop (pointer events) ────────────────────────────────────────────
+slots.forEach((slot, i) => {
+  slot.addEventListener('pointerdown', e => {
+    if (pieces[i].used) return;
+    e.preventDefault();
+    dragging = { slotIndex: i, shape: pieces[i].shape };
+    slot.classList.add('dragging-source');
+    buildGhost(dragging.shape);
+    positionGhost(e.clientX, e.clientY, dragging.shape);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  });
+});
+
+function onMove(e) {
+  if (!dragging) return;
+  positionGhost(e.clientX, e.clientY, dragging.shape);
+
+  const hit = getBoardCell(e.clientX, e.clientY);
+  if (hit) {
+    const { originR, originC } = getPlacementOrigin(hit.r, hit.c, dragging.shape);
+    showHighlight(originR, originC, dragging.shape, canPlace(originR, originC, dragging.shape));
+  } else {
+    clearHighlight();
+  }
+}
+
+function onUp(e) {
+  window.removeEventListener('pointermove', onMove);
+  window.removeEventListener('pointerup', onUp);
+  dragGhost.style.display = 'none';
+  clearHighlight();
+
+  if (!dragging) return;
+  const slot = slots[dragging.slotIndex];
+  slot.classList.remove('dragging-source');
+
+  const hit = getBoardCell(e.clientX, e.clientY);
+  if (hit) {
+    const { originR, originC } = getPlacementOrigin(hit.r, hit.c, dragging.shape);
+    if (canPlace(originR, originC, dragging.shape)) {
+      placePiece(originR, originC, dragging.shape);
+      pieces[dragging.slotIndex].used = true;
+      renderTray();
+
+      // deal new set if all used
+      if (pieces.every(p => p.used)) {
+        setTimeout(() => { dealPieces(); checkGameOver(); }, 400);
+      } else {
+        setTimeout(checkGameOver, 200);
+      }
+    }
+  }
+
+  dragging = null;
+}
+
+// ─── Touch support (map touch to pointer) ────────────────────────────────────
+// Pointer events already handle touch on most browsers natively.
+
+// ─── Restart ─────────────────────────────────────────────────────────────────
+document.getElementById('restart-btn').addEventListener('click', () => {
+  overlay.classList.remove('show');
+  init();
+});
+
+// ─── Start ───────────────────────────────────────────────────────────────────
+bestEl.textContent = best;
+init();
+</script>
+</body>
+</html>
