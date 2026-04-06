@@ -2,14 +2,20 @@
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Block Blast</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
+    html, body {
+      overflow: hidden;
+      height: 100%;
+      touch-action: none;
+    }
+
     body {
       background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
-      min-height: 100vh;
+      min-height: 100dvh;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -17,44 +23,45 @@
       font-family: 'Segoe UI', sans-serif;
       color: #fff;
       user-select: none;
+      padding: env(safe-area-inset-top, 0) env(safe-area-inset-right, 0) env(safe-area-inset-bottom, 0) env(safe-area-inset-left, 0);
     }
 
     h1 {
-      font-size: 2.4rem;
+      font-size: clamp(1.6rem, 6vw, 2.4rem);
       font-weight: 900;
       letter-spacing: 4px;
       background: linear-gradient(90deg, #f7971e, #ffd200);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
-      margin-bottom: 16px;
+      margin-bottom: 12px;
       text-shadow: none;
     }
 
     /* Score area */
     #scores {
       display: flex;
-      gap: 32px;
-      margin-bottom: 20px;
+      gap: 24px;
+      margin-bottom: 14px;
     }
 
     .score-box {
       background: rgba(255,255,255,0.08);
       border: 1px solid rgba(255,255,255,0.15);
       border-radius: 14px;
-      padding: 10px 28px;
+      padding: 8px 24px;
       text-align: center;
       backdrop-filter: blur(6px);
     }
 
     .score-label {
-      font-size: 0.7rem;
+      font-size: 0.65rem;
       letter-spacing: 2px;
       color: #aaa;
       text-transform: uppercase;
     }
 
     .score-value {
-      font-size: 1.8rem;
+      font-size: 1.6rem;
       font-weight: 700;
       color: #ffd200;
     }
@@ -62,7 +69,7 @@
     /* Main layout */
     #game-area {
       display: flex;
-      gap: 24px;
+      gap: 20px;
       align-items: flex-start;
     }
 
@@ -71,25 +78,58 @@
       background: rgba(255,255,255,0.05);
       border: 2px solid rgba(255,255,255,0.12);
       border-radius: 16px;
-      padding: 12px;
+      padding: 10px;
       backdrop-filter: blur(8px);
       box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+      touch-action: none;
     }
 
     #board {
       display: grid;
-      grid-template-columns: repeat(8, 48px);
-      grid-template-rows: repeat(8, 48px);
+      grid-template-columns: repeat(8, var(--cell-size, 48px));
+      grid-template-rows: repeat(8, var(--cell-size, 48px));
       gap: 3px;
     }
 
     .cell {
-      width: 48px;
-      height: 48px;
-      border-radius: 8px;
+      width: var(--cell-size, 48px);
+      height: var(--cell-size, 48px);
+      border-radius: 6px;
       background: rgba(255,255,255,0.06);
       border: 1px solid rgba(255,255,255,0.08);
       transition: background 0.15s, transform 0.15s;
+      touch-action: none;
+    }
+
+    /* ── Mobile layout ── */
+    @media (max-width: 600px) {
+      :root { --cell-size: 38px; }
+
+      #game-area {
+        flex-direction: column;
+        align-items: center;
+        gap: 14px;
+      }
+
+      #tray {
+        flex-direction: row !important;
+        justify-content: center;
+        gap: 12px;
+      }
+
+      .piece-slot {
+        width: 100px !important;
+        height: 100px !important;
+      }
+    }
+
+    @media (max-width: 390px) {
+      :root { --cell-size: 34px; }
+
+      .piece-slot {
+        width: 90px !important;
+        height: 90px !important;
+      }
     }
 
     .cell.filled {
@@ -147,6 +187,7 @@
       cursor: grab;
       transition: border-color 0.2s, background 0.2s;
       position: relative;
+      touch-action: none;
     }
 
     .piece-slot:active { cursor: grabbing; }
@@ -174,9 +215,7 @@
     }
 
     .ghost-cell {
-      width: 48px;
-      height: 48px;
-      border-radius: 8px;
+      border-radius: 6px;
       opacity: 0.75;
     }
 
@@ -265,7 +304,18 @@
 <script>
 // ─── Constants ───────────────────────────────────────────────────────────────
 const ROWS = 8, COLS = 8;
-const CELL_SIZE = 48, CELL_GAP = 3;
+const CELL_GAP = 3;
+let CELL_SIZE = 48; // updated from DOM after render
+
+function updateCellSize() {
+  const cell = boardEl.querySelector('.cell');
+  if (cell) CELL_SIZE = cell.getBoundingClientRect().width;
+}
+
+window.addEventListener('resize', () => {
+  updateCellSize();
+  if (dragging) buildGhost(dragging.shape);
+});
 
 // Tetromino / polmino shapes [row, col] offsets
 const SHAPES = [
@@ -358,6 +408,7 @@ function buildBoard() {
     }
   }
   renderBoard();
+  updateCellSize();
 }
 
 function renderBoard() {
@@ -456,6 +507,8 @@ function buildGhost(shape) {
     for (let c = 0; c < cols; c++) {
       const div = document.createElement('div');
       div.className = 'ghost-cell';
+      div.style.width = CELL_SIZE + 'px';
+      div.style.height = CELL_SIZE + 'px';
       if (occupied.has(`${r},${c}`)) {
         div.style.background = shape.color;
         div.style.boxShadow = `inset 0 2px 4px rgba(255,255,255,0.3)`;
@@ -467,7 +520,7 @@ function buildGhost(shape) {
   }
 }
 
-function positionGhost(cx, cy, shape) {
+function positionGhost(cx, cy, shape, isTouch) {
   const cells = shape.cells;
   const minR = Math.min(...cells.map(([r])=>r));
   const minC = Math.min(...cells.map(([,c])=>c));
@@ -477,8 +530,10 @@ function positionGhost(cx, cy, shape) {
   const cols = maxC - minC + 1;
   const totalW = cols * CELL_SIZE + (cols - 1) * CELL_GAP;
   const totalH = rows * CELL_SIZE + (rows - 1) * CELL_GAP;
+  // On touch, lift ghost above finger so it's visible
+  const touchOffset = isTouch ? totalH + CELL_SIZE * 0.5 : totalH / 2;
   dragGhost.style.left = (cx - totalW / 2) + 'px';
-  dragGhost.style.top  = (cy - totalH / 2) + 'px';
+  dragGhost.style.top  = (cy - touchOffset) + 'px';
 }
 
 // ─── Board cell from pointer ──────────────────────────────────────────────────
@@ -630,10 +685,11 @@ slots.forEach((slot, i) => {
   slot.addEventListener('pointerdown', e => {
     if (pieces[i].used) return;
     e.preventDefault();
-    dragging = { slotIndex: i, shape: pieces[i].shape };
+    const isTouch = e.pointerType === 'touch';
+    dragging = { slotIndex: i, shape: pieces[i].shape, isTouch };
     slot.classList.add('dragging-source');
     buildGhost(dragging.shape);
-    positionGhost(e.clientX, e.clientY, dragging.shape);
+    positionGhost(e.clientX, e.clientY, dragging.shape, isTouch);
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
   });
@@ -641,9 +697,15 @@ slots.forEach((slot, i) => {
 
 function onMove(e) {
   if (!dragging) return;
-  positionGhost(e.clientX, e.clientY, dragging.shape);
+  e.preventDefault();
+  positionGhost(e.clientX, e.clientY, dragging.shape, dragging.isTouch);
 
-  const hit = getBoardCell(e.clientX, e.clientY);
+  // For touch, the hit point for board detection is above the finger (matching ghost position)
+  const hitY = dragging.isTouch
+    ? e.clientY - CELL_SIZE * 1.5
+    : e.clientY;
+
+  const hit = getBoardCell(e.clientX, hitY);
   if (hit) {
     const { originR, originC } = getPlacementOrigin(hit.r, hit.c, dragging.shape);
     showHighlight(originR, originC, dragging.shape, canPlace(originR, originC, dragging.shape));
@@ -662,7 +724,12 @@ function onUp(e) {
   const slot = slots[dragging.slotIndex];
   slot.classList.remove('dragging-source');
 
-  const hit = getBoardCell(e.clientX, e.clientY);
+  // Match the same offset used in onMove for touch
+  const hitY = dragging.isTouch
+    ? e.clientY - CELL_SIZE * 1.5
+    : e.clientY;
+
+  const hit = getBoardCell(e.clientX, hitY);
   if (hit) {
     const { originR, originC } = getPlacementOrigin(hit.r, hit.c, dragging.shape);
     if (canPlace(originR, originC, dragging.shape)) {
